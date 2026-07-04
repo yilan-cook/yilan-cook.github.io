@@ -1,7 +1,24 @@
 window.addEventListener("load", () => {
   let loadFlag = false;
-  let dataObj = [];
+  let dataObj = Promise.resolve([]);
+  let searchTimer = null;
   const $searchMask = document.getElementById("search-mask");
+
+  const showSearchWrap = () => {
+    const $searchWrap = document.querySelector("#local-search .search-wrap");
+    if ($searchWrap) $searchWrap.style.display = "block";
+  };
+
+  const showSearchError = message => {
+    showSearchWrap();
+    const $loadingStatus = document.getElementById("loading-status");
+    const $resultContent = document.getElementById("local-search-results");
+    if ($loadingStatus) $loadingStatus.innerHTML = "";
+    if ($resultContent) {
+      $resultContent.style.display = "block";
+      $resultContent.innerHTML = `<div id="local-search__hits-empty">${message}</div>`;
+    }
+  };
 
   const openSearch = () => {
     const bodyStyle = document.body.style;
@@ -41,7 +58,13 @@ window.addEventListener("load", () => {
   const searchClickFnOnce = () => {
     document.querySelector("#local-search .search-close-button").addEventListener("click", closeSearch);
     $searchMask.addEventListener("click", closeSearch);
-    if (GLOBAL_CONFIG.localSearch.preload) dataObj = fetchData(GLOBAL_CONFIG.localSearch.path);
+    if (GLOBAL_CONFIG.localSearch.preload) {
+      dataObj = fetchData(GLOBAL_CONFIG.localSearch.path).catch(error => {
+        console.error("Local search index loading failed:", error);
+        showSearchError("搜索索引加载失败，请刷新页面后重试");
+        return [];
+      });
+    }
   };
 
   // check url is json or not
@@ -53,11 +76,14 @@ window.addEventListener("load", () => {
   const fetchData = async path => {
     let data = [];
     const response = await fetch(path);
+    if (!response.ok) throw new Error(`Search index request failed: ${response.status}`);
     if (isJson(path)) {
       data = await response.json();
     } else {
       const res = await response.text();
       const t = await new window.DOMParser().parseFromString(res, "text/xml");
+      const parseError = t.querySelector("parsererror");
+      if (parseError) throw new Error(parseError.textContent || "Search index XML parse failed");
       const a = await t;
 
       const normalizeSearchUrl = url => {
@@ -77,8 +103,16 @@ window.addEventListener("load", () => {
 
       const shouldUseSearchImage = src => {
         if (!src) return false;
-        return !/ytimg\.com|youtube\.com|favicon|avatar|data:image/i.test(src);
+        return !/ytimg\.com|youtube\.com|favicon|avatar|data:image|blob:/i.test(src);
       };
+
+      const escapeHtml = value =>
+        String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
 
       const escapeAttr = value =>
         String(value || "")
@@ -96,7 +130,7 @@ window.addEventListener("load", () => {
             tagsArr.push(item.textContent);
           });
         }
-        let content = item.querySelector("content") && item.querySelector("content").textContent;
+        let content = (item.querySelector("content") && item.querySelector("content").textContent) || "";
         const cover = item.querySelector("cover") && item.querySelector("cover").textContent;
         let imgReg = /<img.*?(?:>|\/>)/gi; //匹配图片中的img标签
         let srcReg = /src=[\'\"]?([^\'\"]*)[\'\"]?/i; // 匹配图片中的src
@@ -107,58 +141,97 @@ window.addEventListener("load", () => {
           for (let i = 0; i < arr.length; i++) {
             let src = arr[i].match(srcReg);
             // 获取图片地址
-            if (!src[1].indexOf("http") && shouldUseSearchImage(src[1])) srcArr.push(src[1]);
+            if (src && src[1] && (/^(https?:)?\/\//i.test(src[1]) || src[1].startsWith("/")) && shouldUseSearchImage(src[1])) srcArr.push(src[1]);
           }
         }
 
         return {
-          title: item.querySelector("title").textContent,
+          title: item.querySelector("title") ? item.querySelector("title").textContent : "",
           content: content,
-          url: normalizeSearchUrl(item.querySelector("url").textContent),
+          url: normalizeSearchUrl(item.querySelector("url") ? item.querySelector("url").textContent : "/"),
           tags: tagsArr,
-          oneImage: cover || (srcArr && srcArr[0]),
+          oneImage: shouldUseSearchImage(cover) ? cover : (srcArr && srcArr[0]),
         };
       });
     }
     if (response.ok) {
       const $loadDataItem = document.getElementById("loading-database");
-      $loadDataItem.nextElementSibling.style.display = "block";
-      $loadDataItem.remove();
+      if ($loadDataItem) {
+        $loadDataItem.nextElementSibling.style.display = "block";
+        $loadDataItem.remove();
+      } else {
+        showSearchWrap();
+      }
     }
     return data;
   };
 
   const search = () => {
     if (!GLOBAL_CONFIG.localSearch.preload) {
-      dataObj = fetchData(GLOBAL_CONFIG.localSearch.path);
+      dataObj = fetchData(GLOBAL_CONFIG.localSearch.path).catch(error => {
+        console.error("Local search index loading failed:", error);
+        showSearchError("搜索索引加载失败，请刷新页面后重试");
+        return [];
+      });
     }
     const $input = document.querySelector("#local-search-input input");
     const $resultContent = document.getElementById("local-search-results");
     const $loadingStatus = document.getElementById("loading-status");
 
-    $input.addEventListener("input", function () {
-      const keywords = this.value.trim().toLowerCase().split(/[\s]+/);
-      if (keywords[0] !== "")
-        $loadingStatus.innerHTML = '<i class="anzhiyufont anzhiyu-icon-spinner anzhiyu-pulse-icon"></i>';
+    const escapeHtml = value =>
+      String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
+    const escapeRegExp = value => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const highlightText = (text, keywords) => {
+      let result = escapeHtml(text);
+      keywords.forEach(keyword => {
+        if (!keyword) return;
+        result = result.replace(new RegExp(escapeRegExp(keyword), "gi"), match => {
+          return `<span class="search-keyword">${match}</span>`;
+        });
+      });
+      return result;
+    };
+
+    $input.addEventListener("input", function () {
+      const searchText = this.value.trim();
+      const keywords = searchText.toLowerCase().split(/[\s]+/).filter(Boolean);
+      clearTimeout(searchTimer);
       $resultContent.innerHTML = "";
-      let str = '<div class="search-result-list">';
-      if (keywords.length <= 0) return;
-      let count = 0;
-      // perform local searching
-      dataObj.then(data => {
+      $resultContent.style.display = "block";
+
+      if (keywords.length === 0) {
+        $loadingStatus.innerHTML = "";
+        return;
+      }
+
+      $loadingStatus.innerHTML = '<i class="anzhiyufont anzhiyu-icon-spinner anzhiyu-pulse-icon"></i>';
+
+      searchTimer = setTimeout(() => {
+        let str = '<div class="search-result-list">';
+        let count = 0;
+
+        dataObj.then(data => {
         data.forEach(data => {
           let isMatch = true;
-          let dataTitle = data.title ? data.title.trim().toLowerCase() : "";
+          const rawTitle = data.title ? data.title.trim() : "";
+          const dataTitle = rawTitle.toLowerCase();
           let dataTags = data.tags;
           let oneImage = data.oneImage ?? "";
-          const dataContent = data.content
+          const rawContent = data.content
             ? data.content
                 .trim()
                 .replace(/<[^>]+>/g, "")
-                .toLowerCase()
             : "";
+          const dataContent = rawContent.toLowerCase();
           const dataUrl = data.url;
+          const safeDataUrl = escapeAttr(dataUrl);
           let indexTitle = -1;
           let indexContent = -1;
           let firstOccur = -1;
@@ -209,18 +282,13 @@ window.addEventListener("load", () => {
                 post = "...";
               }
 
-              let matchContent = dataContent.substring(start, end);
-
-              // highlight all keywords
-              keywords.forEach(keyword => {
-                const regS = new RegExp(keyword, "gi");
-                matchContent = matchContent.replace(regS, '<span class="search-keyword">' + keyword + "</span>");
-                dataTitle = dataTitle.replace(regS, '<span class="search-keyword">' + keyword + "</span>");
-              });
+              let matchContent = rawContent.substring(start, end);
+              const titleHtml = highlightText(rawTitle, keywords);
+              const contentHtml = highlightText(matchContent, keywords);
 
               str += '<div class="local-search__hit-item">';
               if (oneImage) {
-                str += `<div class="search-left"><img src="${escapeAttr(oneImage)}" alt="${escapeAttr(dataTitle)}" loading="lazy">`;
+                str += `<div class="search-left"><img src="${escapeAttr(oneImage)}" alt="${escapeAttr(rawTitle)}" loading="lazy">`;
               } else {
                 str += '<div class="search-left" style="width:0">';
               }
@@ -230,16 +298,16 @@ window.addEventListener("load", () => {
               if (oneImage) {
                 str +=
                   '<div class="search-right"><a href="' +
-                  dataUrl +
+                  safeDataUrl +
                   '" class="search-result-title">' +
-                  dataTitle +
+                  titleHtml +
                   "</a>";
               } else {
                 str +=
                   '<div class="search-right" style="width: 100%"><a href="' +
-                  dataUrl +
+                  safeDataUrl +
                   '" class="search-result-title">' +
-                  dataTitle +
+                  titleHtml +
                   "</a>";
               }
 
@@ -248,10 +316,10 @@ window.addEventListener("load", () => {
               if (dataContent !== "") {
                 str +=
                   '<p class="search-result" onclick="pjax.loadUrl(`' +
-                  dataUrl +
+                  safeDataUrl +
                   '`)">' +
                   pre +
-                  matchContent +
+                  contentHtml +
                   post +
                   "</p>";
               }
@@ -260,12 +328,13 @@ window.addEventListener("load", () => {
 
                 for (let i = 0; i < dataTags.length; i++) {
                   const element = dataTags[i].trim();
+                  const tagUrl = encodeURIComponent(element);
 
                   str +=
                     '<a class="tag-list" href="/tags/' +
-                    element +
+                    tagUrl +
                     '/" data-pjax-state="" one-link-mark="yes">#' +
-                    element +
+                    escapeHtml(element) +
                     "</a>";
                 }
 
@@ -278,14 +347,19 @@ window.addEventListener("load", () => {
         if (count === 0) {
           str +=
             '<div id="local-search__hits-empty">' +
-            GLOBAL_CONFIG.localSearch.languages.hits_empty.replace(/\$\{query}/, this.value.trim()) +
+            GLOBAL_CONFIG.localSearch.languages.hits_empty.replace(/\$\{query}/, escapeHtml(searchText)) +
             "</div>";
         }
         str += "</div>";
         $resultContent.innerHTML = str;
         if (keywords[0] !== "") $loadingStatus.innerHTML = "";
         window.pjax && window.pjax.refresh($resultContent);
+      }).catch(error => {
+        console.error("Local search failed:", error);
+        $loadingStatus.innerHTML = "";
+        $resultContent.innerHTML = '<div id="local-search__hits-empty">搜索失败，请刷新页面后重试</div>';
       });
+      }, 160);
     });
   };
 
