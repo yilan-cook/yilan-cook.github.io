@@ -186,6 +186,15 @@ window.addEventListener("load", () => {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
 
+    const escapeAttr = value =>
+      String(value || "")
+        .replace(/<[^>]*>/g, "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
     const escapeRegExp = value => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const highlightText = (text, keywords) => {
