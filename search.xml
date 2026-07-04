@@ -27,9 +27,9 @@
             
             <tag> 早餐 </tag>
             
-            <tag> 油条 </tag>
-            
             <tag> 炸制 </tag>
+            
+            <tag> 油条 </tag>
             
             <tag> 泡打粉 </tag>
             
@@ -143,9 +143,9 @@
       
         <tags>
             
-            <tag> 水煮肉片 </tag>
-            
             <tag> 猪肉 </tag>
+            
+            <tag> 水煮肉片 </tag>
             
             <tag> 刀口辣椒 </tag>
             
@@ -183,17 +183,17 @@
       
         <tags>
             
-            <tag> 猪肉 </tag>
-            
-            <tag> 炸制 </tag>
-            
-            <tag> 家常菜 </tag>
-            
             <tag> 小酥肉 </tag>
             
             <tag> 椒盐 </tag>
             
+            <tag> 猪肉 </tag>
+            
+            <tag> 炸制 </tag>
+            
             <tag> 下酒菜 </tag>
+            
+            <tag> 家常菜 </tag>
             
         </tags>
       
@@ -261,6 +261,8 @@
       
         <tags>
             
+            <tag> 家常菜 </tag>
+            
             <tag> 酸菜鱼 </tag>
             
             <tag> 草鱼 </tag>
@@ -270,8 +272,6 @@
             <tag> 鱼片 </tag>
             
             <tag> 川菜 </tag>
-            
-            <tag> 家常菜 </tag>
             
         </tags>
       

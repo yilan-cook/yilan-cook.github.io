@@ -929,6 +929,9 @@ const anzhiyu = {
     // 监听键盘事件
     //空格控制音乐
     document.addEventListener("keydown", function (event) {
+      if (!window.location.pathname.startsWith("/music/") || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return;
+      }
       //暂停开启音乐
       if (event.code === "Space") {
         event.preventDefault();

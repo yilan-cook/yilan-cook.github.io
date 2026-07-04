@@ -80,6 +80,15 @@ window.addEventListener("load", () => {
         return !/ytimg\.com|youtube\.com|favicon|avatar|data:image/i.test(src);
       };
 
+      const escapeAttr = value =>
+        String(value || "")
+          .replace(/<[^>]*>/g, "")
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+
       data = [...a.querySelectorAll("entry")].map(item => {
         let tagsArr = [];
         if (item.querySelector("tags") && item.querySelector("tags").getElementsByTagName("tag")) {
@@ -211,7 +220,7 @@ window.addEventListener("load", () => {
 
               str += '<div class="local-search__hit-item">';
               if (oneImage) {
-                str += `<div class="search-left"><img src=${oneImage} alt=${dataTitle} data-fancybox='gallery'>`;
+                str += `<div class="search-left"><img src="${escapeAttr(oneImage)}" alt="${escapeAttr(dataTitle)}" loading="lazy">`;
               } else {
                 str += '<div class="search-left" style="width:0">';
               }
