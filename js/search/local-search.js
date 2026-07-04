@@ -60,6 +60,26 @@ window.addEventListener("load", () => {
       const t = await new window.DOMParser().parseFromString(res, "text/xml");
       const a = await t;
 
+      const normalizeSearchUrl = url => {
+        if (!url) return "/";
+        let normalized = decodeURI(url).trim();
+        if (/^https?:\/\//i.test(normalized)) {
+          try {
+            const parsed = new URL(normalized);
+            return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+          } catch (error) {
+            return normalized;
+          }
+        }
+        normalized = normalized.replace(/^\/+/, "");
+        return `${GLOBAL_CONFIG.root || "/"}${normalized}`.replace(/\/{2,}/g, "/");
+      };
+
+      const shouldUseSearchImage = src => {
+        if (!src) return false;
+        return !/ytimg\.com|youtube\.com|favicon|avatar|data:image/i.test(src);
+      };
+
       data = [...a.querySelectorAll("entry")].map(item => {
         let tagsArr = [];
         if (item.querySelector("tags") && item.querySelector("tags").getElementsByTagName("tag")) {
@@ -68,6 +88,7 @@ window.addEventListener("load", () => {
           });
         }
         let content = item.querySelector("content") && item.querySelector("content").textContent;
+        const cover = item.querySelector("cover") && item.querySelector("cover").textContent;
         let imgReg = /<img.*?(?:>|\/>)/gi; //匹配图片中的img标签
         let srcReg = /src=[\'\"]?([^\'\"]*)[\'\"]?/i; // 匹配图片中的src
         let arr = content.match(imgReg); //筛选出所有的img
@@ -77,16 +98,16 @@ window.addEventListener("load", () => {
           for (let i = 0; i < arr.length; i++) {
             let src = arr[i].match(srcReg);
             // 获取图片地址
-            if (!src[1].indexOf("http")) srcArr.push(src[1]);
+            if (!src[1].indexOf("http") && shouldUseSearchImage(src[1])) srcArr.push(src[1]);
           }
         }
 
         return {
           title: item.querySelector("title").textContent,
           content: content,
-          url: item.querySelector("url").textContent,
+          url: normalizeSearchUrl(item.querySelector("url").textContent),
           tags: tagsArr,
-          oneImage: srcArr && srcArr[0],
+          oneImage: cover || (srcArr && srcArr[0]),
         };
       });
     }
@@ -128,7 +149,7 @@ window.addEventListener("load", () => {
                 .replace(/<[^>]+>/g, "")
                 .toLowerCase()
             : "";
-          const dataUrl = data.url.startsWith("/") ? data.url : GLOBAL_CONFIG.root + data.url;
+          const dataUrl = data.url;
           let indexTitle = -1;
           let indexContent = -1;
           let firstOccur = -1;
